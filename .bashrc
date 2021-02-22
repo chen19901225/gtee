@@ -1,0 +1,1 @@
+alias pmv='go build && cp ./gtee ~/soft'
