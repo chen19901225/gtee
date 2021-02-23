@@ -17,13 +17,13 @@ func MustparseByte(byteStr string) int64 {
 	var unit int64 = 1
 	n := len(byteStr)
 	if byteStr[n-1] == 'm' || byteStr[n-1] == 'M' {
-		unit = 1024
+		unit = 1024 * 1024
 		byteStr = byteStr[:n-1]
 	} else if byteStr[n-1] == 'k' || byteStr[n-1] == 'K' {
-		unit = 1
+		unit = 1024
 		byteStr = byteStr[:n-1]
 	} else if byteStr[n-1] == 'g' || byteStr[n-1] == 'G' {
-		unit = 1024 * 1024
+		unit = 1024 * 1024 * 1024
 		byteStr = byteStr[:n-1]
 	}
 	byteN, err := strconv.Atoi(byteStr)
@@ -31,6 +31,14 @@ func MustparseByte(byteStr string) int64 {
 	return int64(byteN) * unit
 
 }
+func getSizeOrZero(pathStr string) int64 {
+	stat, err := os.Stat(pathStr)
+	if os.IsNotExist(err) {
+		return 0
+	}
+	return stat.Size()
+}
+
 func isSizeSmall(size int64, pathStr string) int {
 	stat, err := os.Stat(pathStr)
 	if os.IsNotExist(err) {
@@ -41,6 +49,17 @@ func isSizeSmall(size int64, pathStr string) int {
 		return 1
 	}
 	return 0
+}
+func sizePretty(size int64) string {
+	unit := ""
+	arr := []string{"k", "m", "g"}
+	for i := 0; i < len(arr); i++ {
+		if size > 1024 {
+			size = size / 1024
+			unit = arr[i]
+		}
+	}
+	return fmt.Sprintf("%d%s", size, unit)
 }
 
 func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error {
@@ -64,7 +83,7 @@ func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error 
 	maxByte := MustparseByte(maxByteStr)
 	message := make([]byte, 1024)
 	for {
-		
+
 		// n, err := io.ReadFull(os.Stdin, message)
 		n, err := os.Stdin.Read(message)
 		// 可能是EOF
@@ -77,9 +96,21 @@ func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error 
 		}
 
 		if n > 0 {
-			os.Stdout.Write(message[:n])
+			_, err := os.Stdout.Write(message[:n])
+			util.PanicIfNotNull(err)
 			// should rename
-			if isSizeSmall(maxByte, pathStr) == 0 {
+			fileSize := getSizeOrZero(pathStr)
+			fileSizeStr := sizePretty(fileSize)
+			isSmallSize := fileSize < maxByte
+			fucLog(
+				fmt.Sprintf(
+					"fileSize:%d,maxByte:%d, isSmall:%t, fileSizeStr:%s, maxByteStr:%s", fileSize, maxByte, isSmallSize,
+					fileSizeStr,
+					maxByteStr,
+				),
+			)
+			if !isSmallSize {
+				fucLog("rename begin")
 				for i := backupCount - 1; i >= 0; i-- {
 					srcPath := fmt.Sprintf("%s.%d", pathStr, i)
 					if i == 0 {
@@ -87,13 +118,24 @@ func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error 
 					}
 					DestPath := fmt.Sprintf("%s.%d", pathStr, i+1)
 					_, err := os.Stat(srcPath)
-					if os.IsExist(err) {
+					isExist := err == nil || os.IsExist(err)
+					fucLog(
+						fmt.Sprintf("path:%s, isExists:%t", srcPath, isExist),
+					)
+					if isExist {
+						fucLog(
+							fmt.Sprintf("rename %s=>%s", srcPath, DestPath),
+						)
 						err = os.Rename(srcPath, DestPath)
 						util.PanicIfNotNull(err)
 					}
 				}
 
-				f, err = os.OpenFile(pathStr, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+				fucLog(
+					fmt.Sprintf("reopen file %s", pathStr),
+				)
+
+				f, err = os.OpenFile(pathStr, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModeAppend|os.ModePerm)
 				util.PanicIfNotNull(err)
 
 			}
