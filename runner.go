@@ -111,6 +111,9 @@ func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error 
 			)
 			if !isSmallSize {
 				fucLog("rename begin")
+				err = f.Close()
+				util.PanicIfNotNull(err)
+
 				for i := backupCount - 1; i >= 0; i-- {
 					srcPath := fmt.Sprintf("%s.%d", pathStr, i)
 					if i == 0 {
@@ -134,6 +137,8 @@ func run(maxByteStr string, backupCount int, pathStr string, isDebug int) error 
 				fucLog(
 					fmt.Sprintf("reopen file %s", pathStr),
 				)
+				
+
 
 				f, err = os.OpenFile(pathStr, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModeAppend|os.ModePerm)
 				util.PanicIfNotNull(err)
